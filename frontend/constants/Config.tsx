@@ -20,10 +20,8 @@ const localIP = getLocalBackendIP();
 
 export const API_URL = __DEV__
   ? `http://${localIP}:3000`
-  : (process.env.EXPO_PUBLIC_API_URL ??
-    (Platform.OS === "web" && typeof window !== "undefined"
-      ? `${window.location.protocol}//${window.location.hostname}${window.location.port ? `:${window.location.port}` : ""}`
-      : "https://pos-nets-production.up.railway.app"));
+  : (process.env.EXPO_PUBLIC_API_URL ||
+    "https://pos-nets-production.up.railway.app");
 
 if (__DEV__) {
   console.log(`🌐 [Config] API_URL: ${API_URL} | Platform: ${Platform.OS}`);
