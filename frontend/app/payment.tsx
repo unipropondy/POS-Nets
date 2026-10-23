@@ -3,22 +3,22 @@ import { FontAwesome5, Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Easing,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  useWindowDimensions,
-  View
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Easing,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    useWindowDimensions,
+    View
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -31,8 +31,8 @@ import PayNowPaymentModal from "../components/payment/PayNowPaymentModal";
 import SplitPaymentComponent from "../components/payment/SplitPaymentComponent";
 import UPIPaymentModal from "../components/payment/UPIPaymentModal";
 import {
-  findActiveOrder,
-  useActiveOrdersStore,
+    findActiveOrder,
+    useActiveOrdersStore,
 } from "../stores/activeOrdersStore";
 import { useAuthStore } from "../stores/authStore";
 import { useCartStore } from "../stores/cartStore";
@@ -50,9 +50,9 @@ import { useTerminalPaymentStore } from "../stores/terminalPaymentStore";
 import { CustomerDisplaySync } from "../utils/CustomerDisplaySync";
 // import { initiateNetsSale, isNetsPayMode } from "../services/netsService";
 import {
-  initiateNetsSale,
-  isNetsPayMode,
-  simulateNetsSale,
+    initiateNetsSale,
+    isNetsPayMode,
+    simulateNetsSale,
 } from '../services/netsService';
 // --- ROTATING SYNC ICON COMPONENT ---
 const RotatingSyncIcon = ({ size = 16, color = "#3b82f6" }: { size?: number; color?: string }) => {
@@ -2077,7 +2077,7 @@ export default function PaymentScreen() {
       if (match && match[1]) {
         const host = match[1];
         if (host.includes("railway") || host.includes("production")) {
-          return "https://pos-v-20-production.up.railway.app/customer-display";
+          return "https://pos-nets-production.up.railway.app/customer-display";
 
         }
         return `http://${host}:8081/customer-display`;

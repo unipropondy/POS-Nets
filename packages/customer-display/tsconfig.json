@@ -2,14 +2,14 @@
   "compilerOptions": {
     "strict": true,
     "jsx": "react-native",
-    "moduleResolution": "node",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "baseUrl": ".",
     "paths": {
-      "*": ["*", "../../frontend/node_modules/*"]
+      "*": ["./*", "../../frontend/node_modules/*"]
     }
   },
   "include": ["src"]
