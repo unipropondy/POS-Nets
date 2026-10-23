@@ -3,22 +3,22 @@ import { FontAwesome5, Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Easing,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    useWindowDimensions,
-    View
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Easing,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  useWindowDimensions,
+  View
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -31,8 +31,8 @@ import PayNowPaymentModal from "../components/payment/PayNowPaymentModal";
 import SplitPaymentComponent from "../components/payment/SplitPaymentComponent";
 import UPIPaymentModal from "../components/payment/UPIPaymentModal";
 import {
-    findActiveOrder,
-    useActiveOrdersStore,
+  findActiveOrder,
+  useActiveOrdersStore,
 } from "../stores/activeOrdersStore";
 import { useAuthStore } from "../stores/authStore";
 import { useCartStore } from "../stores/cartStore";
@@ -47,12 +47,13 @@ import { useServiceChargeOverrideStore } from "../stores/serviceChargeOverrideSt
 import { useTableNavigationStore } from "../stores/tableNavigationStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
 import { useTerminalPaymentStore } from "../stores/terminalPaymentStore";
+import { useTerminalStore } from "../stores/terminalStore";
 import { CustomerDisplaySync } from "../utils/CustomerDisplaySync";
 // import { initiateNetsSale, isNetsPayMode } from "../services/netsService";
 import {
-    initiateNetsSale,
-    isNetsPayMode,
-    simulateNetsSale,
+  initiateNetsSale,
+  isNetsPayMode,
+  simulateNetsSale,
 } from '../services/netsService';
 // --- ROTATING SYNC ICON COMPONENT ---
 const RotatingSyncIcon = ({ size = 16, color = "#3b82f6" }: { size?: number; color?: string }) => {
@@ -1494,12 +1495,20 @@ export default function PaymentScreen() {
 
       const fetchPromise = (async () => {
         try {
-          const result = await initiateNetsSale({
-            amount: total,
-            tableId: context?.tableId ? String(context.tableId) : undefined,
-            orderId: context?.orderId || undefined,
-            sessionId: checkoutSessionId || undefined,
-          });
+          const terminalState = useTerminalStore.getState();
+    if (!terminalState.isConfigured || !terminalState.terminalCode) {
+    throw new Error(
+     "POS terminal is not configured. Please configure the terminal before NETS payment."
+    );
+    }
+
+  const result = await initiateNetsSale({
+  amount: total,
+  tableId: context?.tableId ? String(context.tableId) : undefined,
+  orderId: context?.orderId || undefined,
+  sessionId: checkoutSessionId || undefined,
+  terminalId: terminalState.terminalCode,
+});
 
           console.log('✅ [MainPayment] NETS response:', result);
           const responseCode = result.code;

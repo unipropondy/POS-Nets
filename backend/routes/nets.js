@@ -25,10 +25,16 @@ function broadcastNetsStatus(io, tableId, amount, result) {
   let status  = 'failed';
   let message = '';
 
-  if (result.success) {
-    status  = 'success';
-    message = `✅ $${parseFloat(amount).toFixed(2)} paid via NETS`;
-  } else if (result.code === '02') {
+  if (
+  result.success === true &&
+  result.approved === true &&
+  result.isSimulation !== true &&
+  result.isSimulation !== "true" &&
+  result.code !== "LIVE_PAYMENT_DISABLED"
+) {
+  status = 'success';
+  message = `✅ $${parseFloat(amount).toFixed(2)} paid via NETS`;
+} else if (result.code === '02') {
     status  = 'cancelled';
     message = '❌ Transaction cancelled on terminal';
   } else if (result.code === '03' || result.code === 'SOCKET_ERR') {
@@ -64,10 +70,20 @@ async function persistNetsTransaction({
 }) {
   try {
     const amountCents = Math.round(parseFloat(amount) * 100);
-    const status      = result.success ? 'APPROVED' : (
-      result.code === '02' ? 'CANCELLED' :
-      result.code === '03' ? 'TIMEOUT'   : 'DECLINED'
-    );
+ const isNetsApproved =
+  result.success === true &&
+  result.approved === true &&
+  result.isSimulation !== true &&
+  result.isSimulation !== "true" &&
+  result.code !== "LIVE_PAYMENT_DISABLED";
+
+const status = isNetsApproved
+  ? 'APPROVED'
+  : result.code === '02'
+    ? 'CANCELLED'
+    : result.code === '03'
+      ? 'TIMEOUT'
+      : 'DECLINED';
 
     await pool.request()
       .input('NetsTransId',    sql.UniqueIdentifier, uuidv4())
@@ -112,13 +128,47 @@ const activeNetsRequests = new Map(); // key → promise
 // ─── POST /api/nets/sale ──────────────────────────────────────────────────────
 router.post('/sale', async (req, res) => {
   try {
-    const {
-      amount,
-      tableId,
-      settlementId,
-      orderId,
-      sessionId,
-    } = req.body;
+  const {
+  amount,
+  tableId,
+  settlementId,
+  orderId,
+  sessionId,
+  terminalId,
+} = req.body;
+
+// Validate POS terminal code
+if (
+  typeof terminalId !== 'string' ||
+  !terminalId.trim() ||
+  terminalId.trim().length > 10
+) {
+  return res.status(400).json({
+    success: false,
+    code: 'INVALID_TERMINAL',
+    msg: 'Valid POS terminal code is required.'
+  });
+}
+
+const posTerminalCode = terminalId.trim();
+
+const pool = await poolPromise;
+
+const terminalCheck = await pool.request()
+  .input('TerminalCode', sql.Char(10), posTerminalCode)
+  .query(`
+    SELECT TerminalCode
+    FROM dbo.TerminalMaster
+    WHERE TerminalCode = @TerminalCode
+  `);
+
+if (terminalCheck.recordset.length !== 1) {
+  return res.status(400).json({
+    success: false,
+    code: 'TERMINAL_NOT_FOUND',
+    msg: 'POS terminal is not registered.'
+  });
+}
 
     // ── Input validation ────────────────────────────────────────────────────
     const parsedAmount = parseFloat(amount);
@@ -129,51 +179,128 @@ router.post('/sale', async (req, res) => {
     // ── Server-side amount validation against DB ────────────────────────────
     // If orderId is provided, validate the amount matches what the DB says is owed.
     // This prevents the frontend from sending a tampered lower amount.
-    if (orderId) {
-      try {
-        const pool = await poolPromise;
-        const check = await pool.request()
-          .input('OrderId', sql.UniqueIdentifier, orderId)
-          .query(`
-            SELECT TOP 1 TotalAmount
-            FROM RestaurantOrderCur
-            WHERE OrderId = @OrderId AND isOrderClosed = 0
-          `);
-        if (check.recordset.length > 0) {
-          const dbTotal = parseFloat(check.recordset[0].TotalAmount || 0);
-          if (dbTotal > 0 && Math.abs(dbTotal - parsedAmount) > 1.00) {
-            console.warn(`[NETS] Amount mismatch: frontend $${parsedAmount}, DB $${dbTotal}`);
-            // Allow ±$1 tolerance for rounding; reject large discrepancies
-            return res.status(400).json({
-              success: false,
-              code: 'AMOUNT_MISMATCH',
-              msg: `Amount mismatch: expected $${dbTotal.toFixed(2)}, received $${parsedAmount.toFixed(2)}`,
-            });
-          }
-        }
-      } catch (validErr) {
-        // Non-critical: validation DB query failed; log and continue
-        console.warn('[NETS] Amount validation DB query failed:', validErr.message);
-      }
+//     if (orderId) {
+//       try {
+//         const pool = await poolPromise;
+//         const check = await pool.request()
+//           .input('OrderId', sql.UniqueIdentifier, orderId)
+//           .query(`
+//             SELECT TOP 1 TotalAmount
+//             FROM RestaurantOrderCur
+//             WHERE OrderId = @OrderId AND isOrderClosed = 0
+//           `);
+//         if (check.recordset.length > 0) {
+//           const dbTotal = parseFloat(check.recordset[0].TotalAmount || 0);
+//           if (
+//   !Number.isFinite(dbTotal) ||
+//   dbTotal <= 0 ||
+//   Math.round(dbTotal * 100) !== Math.round(parsedAmount * 100)
+// ) {
+//             console.warn(`[NETS] Amount mismatch: frontend $${parsedAmount}, DB $${dbTotal}`);
+//             // Allow ±$1 tolerance for rounding; reject large discrepancies
+//             return res.status(400).json({
+//               success: false,
+//               code: 'AMOUNT_MISMATCH',
+//               msg: `Amount mismatch: expected $${dbTotal.toFixed(2)}, received $${parsedAmount.toFixed(2)}`,
+//             });
+//           }
+//         }
+//       } catch (validErr) {
+//         // Non-critical: validation DB query failed; log and continue
+//         console.warn('[NETS] Amount validation DB query failed:', validErr.message);
+//       }
+//     }
+
+  if (
+  typeof orderId !== 'string' ||
+  !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(orderId)
+) {
+  return res.status(400).json({
+    success: false,
+    approved: false,
+    code: 'INVALID_ORDER_ID',
+    msg: 'A valid Order ID is required for NETS payment.'
+  });
+}
+
+{
+  try {
+    const pool = await poolPromise;
+
+    const check = await pool.request()
+      .input('OrderId', sql.UniqueIdentifier, orderId)
+      .query(`
+        SELECT TOP 1 TotalAmount
+        FROM RestaurantOrderCur
+        WHERE OrderId = @OrderId
+          AND isOrderClosed = 0
+      `);
+
+    // Reject missing or closed orders
+    if (check.recordset.length === 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'ORDER_NOT_FOUND',
+        msg: 'Order not found or already closed.'
+      });
     }
+
+    const dbTotal = Number(check.recordset[0].TotalAmount);
+
+    if (!Number.isFinite(dbTotal) || dbTotal <= 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_ORDER_AMOUNT',
+        msg: 'Invalid order amount in database.'
+      });
+    }
+
+    // Temporary upper-bound check.
+    // Full payment and partial/split payment are both permitted.
+    // Outstanding balance validation must be added before LIVE mode.
+    if (Math.round(parsedAmount * 100) > Math.round(dbTotal * 100)) {
+      return res.status(400).json({
+        success: false,
+        code: 'AMOUNT_EXCEEDS_ORDER',
+        msg: 'NETS payment exceeds the order total.'
+      });
+    }
+
+  } catch (validErr) {
+    console.error(
+      '[NETS] Order validation failed:',
+      validErr.message
+    );
+
+    return res.status(503).json({
+      success: false,
+      code: 'ORDER_VALIDATION_FAILED',
+      msg: 'Unable to validate order. Please retry.'
+    });
+  }
+}
 
     // ── Duplicate in-flight check ───────────────────────────────────────────
     const lockKey = tableId ? String(tableId) : (sessionId || `amt_${parsedAmount}`);
-    if (activeNetsRequests.has(lockKey)) {
-      console.warn(`[NETS] Duplicate request for key ${lockKey} — returning in-flight promise`);
-      try {
-        const result = await activeNetsRequests.get(lockKey);
-        broadcastNetsStatus(req.io, tableId, parsedAmount, result);
-        return res.json(result);
-      } catch (e) {
-        return res.status(409).json({ success: false, code: 'IN_FLIGHT', msg: 'Payment already in progress' });
-      }
-    }
+if (activeNetsRequests.has(lockKey)) {
+  console.warn(`[NETS] Duplicate in-flight request blocked: ${lockKey}`);
+
+  return res.status(409).json({
+    success: false,
+    approved: false,
+    code: 'IN_FLIGHT',
+    msg: 'A NETS payment is already processing for this table/session. Please wait for its result.'
+  });
+}
 
     // ── Send to terminal ────────────────────────────────────────────────────
     console.log(`[NETS] Sale request — amount: $${parsedAmount}, table: ${tableId}, session: ${sessionId}`);
 
-    const promise = netsService.processSalePayment({ amount: parsedAmount });
+const promise = netsService.processSalePayment({
+  amount: parsedAmount,
+  orderId: orderId,
+  terminalId: terminalId
+});
     activeNetsRequests.set(lockKey, promise);
 
     let result;

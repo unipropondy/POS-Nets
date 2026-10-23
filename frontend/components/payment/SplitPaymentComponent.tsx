@@ -1,33 +1,33 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import { API_URL } from "@/constants/Config"; // ✅ ADD
+import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  ScrollView,
-  Platform,
   ActivityIndicator,
-  Modal,
   Alert,
   Animated,
   Easing,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { FontAwesome5, Ionicons } from "@expo/vector-icons";
 import { Fonts } from "../../constants/Fonts";
 import { Theme } from "../../constants/theme";
-import UPIPaymentModal from "./UPIPaymentModal";
-import PayNowPaymentModal from "./PayNowPaymentModal";
-import { API_URL } from "@/constants/Config";  // ✅ ADD
-import { useToast } from "../Toast";  
-import { CustomerDisplaySync } from "../../utils/CustomerDisplaySync";
+import { initiateNetsSale, isNetsPayMode } from "../../services/netsService";
+import { useAuthStore } from "../../stores/authStore";
 import { useCartStore } from "../../stores/cartStore";
 import { useOrderContextStore } from "../../stores/orderContextStore";
 import { usePaymentSettingsStore } from "../../stores/paymentSettingsStore";
-import { useAuthStore } from "../../stores/authStore";
 import { useTerminalPaymentStore } from "../../stores/terminalPaymentStore";
-import { initiateNetsSale, isNetsPayMode } from "../../services/netsService";
-
+import { useTerminalStore } from "../../stores/terminalStore";
+import { CustomerDisplaySync } from "../../utils/CustomerDisplaySync";
+import { useToast } from "../Toast";
+import PayNowPaymentModal from "./PayNowPaymentModal";
+import UPIPaymentModal from "./UPIPaymentModal";
 // Module-level map: persists split terminal sessions across component unmounts.
 // Keyed by tableId (same key used in useTerminalPaymentStore).
 const ongoingSplitSessions: Record<string, {
@@ -652,11 +652,20 @@ const handleGenerateQR = async (row: SplitPaymentRow) => {
 
     let result: any;
     if (isNets) {
-      result = await initiateNetsSale({
-        amount: amt,
-        tableId: tableId || '',
-        orderId: context?.orderId || '',
-      });
+     const terminalState = useTerminalStore.getState();
+
+if (!terminalState.isConfigured || !terminalState.terminalCode) {
+  throw new Error(
+    "POS terminal is not configured. Please configure the terminal before NETS payment."
+  );
+}
+console.log("[NETS DEBUG] Current Order ID:", context?.orderId);
+result = await initiateNetsSale({
+  amount: amt,
+  tableId: tableId || '',
+  orderId: context?.orderId || '',
+  terminalId: terminalState.terminalCode,
+});
     } else {
       // Endpoint: "Yeahpay Card" → card-payment, "Yeahpay Paynow" → paynow-payment
       const endpoint = isYeahPayCard(row.payMode)
@@ -688,7 +697,16 @@ const handleGenerateQR = async (row: SplitPaymentRow) => {
     const ctx = useOrderContextStore.getState().currentOrder;
     const tblId = ctx?.tableId?.toString();
 
-    const isSuccess = result.success || responseCode === 0 || responseCode === "00";
+    // const isSuccess = result.success || responseCode === 0 || responseCode === "00";
+    const isSuccess = isNets
+  ? (
+      result.success === true &&
+      result.approved === true &&
+      result.isSimulation !== true &&
+      result.isSimulation !== "true" &&
+      result.code !== "LIVE_PAYMENT_DISABLED"
+    )
+  : (result.success || responseCode === 0 || responseCode === "00");
     const isCancelled = responseCode === -1027 || responseCode === "02";
     const isTimeout = responseCode === -1028 || responseCode === -1008 || responseCode === "03" || responseCode === "SOCKET_ERR";
 
@@ -986,7 +1004,8 @@ const handleGenerateQR = async (row: SplitPaymentRow) => {
       if (isNormalPayNow(row.payMode)) {
         // "PAYNOW" (exact) → show static QR modal
         handleGenerateQR(row);
-      } else if (isYeahPayTerminal(row.payMode)) {
+      } else if (isYeahPayTerminal(row.payMode) ||
+    isNetsTerminal(row.payMode)) {
         // "Yeahpay Paynow" or "Yeahpay Card" → YeahPay terminal
         handleGenerateQR(row);
       } else {

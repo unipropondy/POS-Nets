@@ -33,6 +33,7 @@ export interface NetsSaleParams {
   orderId?: string;
   sessionId?: string;
   settlementId?: string;
+  terminalId?: string;
 }
 
 /**
@@ -62,12 +63,13 @@ export async function initiateNetsSale(params: NetsSaleParams): Promise<NetsSale
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({
-      amount: params.amount,
-      tableId: params.tableId || '',
-      orderId: params.orderId || '',
-      sessionId: params.sessionId || '',
-      settlementId: params.settlementId || '',
-    }),
+    amount: params.amount,
+    tableId: params.tableId || '',
+    orderId: params.orderId || '',
+    sessionId: params.sessionId || '',
+    settlementId: params.settlementId || '',
+    terminalId: params.terminalId || '',
+  }),
   });
 
   const result: NetsSaleResult = await response.json();

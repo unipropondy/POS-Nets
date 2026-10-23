@@ -21,6 +21,7 @@ const net   = require('net');
 const http  = require('http');
 const https = require('https');
 const { EventEmitter } = require('events');
+const { getNextNETSSeqNo } = require('./netsSequenceService');
 
 // ─── Bridge Configuration ──────────────────────────────────────────────────────
 const BRIDGE_URL     = process.env.NETS_BRIDGE_URL || 'http://127.0.0.1:5050';
@@ -228,6 +229,15 @@ function parseResponse(raw) {
     timedOut: responseCode === RESP_TIMEOUT,
   };
 }
+function isValidPOSTerminalCode(terminalId) {
+  return (
+    typeof terminalId === 'string' &&
+    terminalId.trim().length > 0 &&
+    terminalId.trim().length <= 10
+  );
+}
+
+
 
 // ─── NetsService Class ────────────────────────────────────────────────────────
 class NetsService extends EventEmitter {
@@ -366,17 +376,28 @@ async simulateBridgePayment({ orderId, amount, terminalId } = {}) {
       return { success: false, code: 'INVALID_AMOUNT', msg: 'Invalid payment amount' };
     }
 
+// Validate POS terminal code
+if (!isValidPOSTerminalCode(terminalId)) {
+  return {
+    success: false,
+    approved: false,
+    code: 'INVALID_TERMINAL',
+    msg: 'Valid POS terminal code is required.'
+  };
+}
+// NETS sequence allocation will be performed here only after
+// payment authorization, duplicate-request protection,
+// and physical terminal configuration are verified.
+// Do not allocate a sequence during simulation.
     try {
       console.log(`[NETS] Dispatching sale to Windows Bridge Service (${BRIDGE_URL}) for $${amountNum.toFixed(2)}...`);
-      const bridgeResult = await callBridge('/api/sale', 'POST', {
-        amount: amountNum,
-        tableId,
-        orderId,
-        sessionId,
-        terminalId: terminalId || this.terminalId,
-        terminalIp: this.host || process.env.NETS_TERMINAL_IP || undefined,
-        terminalPort: this.port || parseInt(process.env.NETS_TERMINAL_PORT || '9742', 10),
-      });
+const bridgeResult = await callBridge('/api/nets/payment', 'POST', {
+  OrderId: orderId,
+  Amount: amountNum,
+  PaymentMode: 'NETS',
+  TerminalId: terminalId,
+  SequenceNo: 0
+});
       console.log('[NETS] Windows Bridge Service responded:', bridgeResult);
       return bridgeResult;
     } catch (bridgeErr) {
